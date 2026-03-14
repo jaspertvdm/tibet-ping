@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tibet-ping"
-version = "0.1.1"
+version = "0.1.2"
 description = "Intent-based discovery and communication protocol with TIBET provenance. ICMP replacement with identity, trust, and context."
 readme = "README.md"
 license = {text = "MIT"}

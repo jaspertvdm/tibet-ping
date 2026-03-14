@@ -33,6 +33,8 @@ LEGACY_PAYLOADS = [
     '"All night long (All night)"',
     '"Cause I wonder where you route, and I wonder what you do"',
     '"Are you somewhere feeling lonely, is someone pinging you?"',
+    '"Tell me how to sync the state, for I haven\'t got a clue"',
+    '"But let me start by saying... DROP PACKET. Who are you?"',
 ]
 
 LEGACY_WARNINGS = [
