@@ -46,10 +46,28 @@ from .beacon import Beacon, BeaconHandler, BeaconResponse
 from .handler import PingHandler
 from .node import PingNode
 
-__version__ = "0.1.4"
+__version__ = "0.2.0"
+
+# Transport layer (merged from tibet-iot in v0.2.0)
+from .transport import (
+    IoTNode,
+    Transport,
+    UDPTransport,
+    TransportConfig,
+    DEFAULT_PORT,
+    DISCOVERY_PORT,
+    PacketCodec,
+    FrameFlags,
+    PeerTracker,
+    PeerRecord,
+    MeshRelay,
+    NetworkDiscovery,
+    MULTICAST_GROUP,
+    MULTICAST_TTL,
+)
 
 __all__ = [
-    # Node (main entry point)
+    # Node (main entry point — protocol)
     "PingNode",
     # Proto
     "PingPacket",
@@ -79,4 +97,19 @@ __all__ = [
     "BeaconResponse",
     # Handler
     "PingHandler",
+    # Transport (merged from tibet-iot)
+    "IoTNode",
+    "Transport",
+    "UDPTransport",
+    "TransportConfig",
+    "DEFAULT_PORT",
+    "DISCOVERY_PORT",
+    "PacketCodec",
+    "FrameFlags",
+    "PeerTracker",
+    "PeerRecord",
+    "MeshRelay",
+    "NetworkDiscovery",
+    "MULTICAST_GROUP",
+    "MULTICAST_TTL",
 ]
