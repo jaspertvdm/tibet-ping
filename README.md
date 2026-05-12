@@ -1,332 +1,337 @@
 # tibet-ping
 
-**Intent-based device communication with built-in UDP transport.**
+**Intent-aware ping, identity probe, and stack diagnostics for TIBET-native systems.**
 
-[![PyPI](https://img.shields.io/pypi/v/tibet-ping)](https://pypi.org/project/tibet-ping/)
-[![Python](https://img.shields.io/pypi/pyversions/tibet-ping)](https://pypi.org/project/tibet-ping/)
-[![License](https://img.shields.io/pypi/l/tibet-ping)](https://pypi.org/project/tibet-ping/)
+This sandbox copy is not trying to replace `tping`.
 
-ICMP ping is dumb: "are you there?" → "yes". No identity, no intent, no trust.
+It is trying to make a clearer choice available:
 
-tibet-ping replaces this with a full protocol stack. Every ping carries identity (JIS), intent, context, and purpose. Responses are trust-gated through Airlock zones. Transport is built-in — UDP, LAN discovery, mesh relay. One `pip install`, two machines talking.
+- use raw `tping` when you want the old-school network reflex
+- choose `tping+` when you want to inspect a deeper stack layer
 
-## Install
+That distinction matters because the current package already contains
+more than the familiar CLI surface suggests.
 
-```bash
-pip install tibet-ping
-```
+## The choice
 
-Optional: msgpack for smaller wire frames (JSON is default):
-```bash
-pip install tibet-ping[msgpack]
-```
+There are really two operator moments here.
 
-> **Upgrading from tibet-iot?** The transport layer is now part of tibet-ping.
-> `pip install tibet-ping>=0.2.0 && pip uninstall tibet-iot`
+### 1. Raw `tping`
 
-## Two Machines Talking (60 seconds)
+Use this when the question is simple:
 
-### Machine A — Hub (receiver)
+> Is anything there at all?
 
-```python
-# hub.py
-import asyncio
-from tibet_ping.transport import IoTNode
-
-async def main():
-    hub = IoTNode("jis:office:hub")
-    hub.set_trust("jis:office:sensor", 0.9)  # Trust the sensor
-
-    await hub.start()
-    print(f"Hub listening on :7150")
-
-    # Keep running until Ctrl+C
-    try:
-        await asyncio.Event().wait()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        await hub.stop()
-
-asyncio.run(main())
-```
-
-### Machine B — Sensor (sender)
-
-```python
-# sensor.py
-import asyncio
-from tibet_ping.transport import IoTNode
-
-async def main():
-    sensor = IoTNode("jis:office:sensor")
-    await sensor.start()
-
-    response = await sensor.send_ping(
-        target="jis:office:hub",
-        addr=("192.168.1.10", 7150),  # Hub's IP
-        intent="temperature.report",
-        purpose="Periodic reading",
-        payload={"celsius": 21.5},
-    )
-
-    if response:
-        print(f"Decision: {response.decision.value}")  # accept
-        print(f"Zone:     {response.airlock_zone}")     # GROEN
-        print(f"Trust:    {response.trust_score}")       # 0.9
-    else:
-        print("No response (ROOD — silent drop)")
-
-    await sensor.stop()
-
-asyncio.run(main())
-```
-
-Run `python hub.py` on machine A, then `python sensor.py` on machine B. The sensor sends a TIBET-backed ping, the hub checks trust, and responds through the Airlock.
-
-### Or use the CLI
+Examples:
 
 ```bash
-# Machine A — listen
-tibet-ping listen --did jis:office:hub
-
-# Machine B — send
-tibet-ping send jis:office:hub 192.168.1.10:7150 temperature.report
+tping 192.168.4.85
+tping 127.0.0.1
 ```
 
-## What Happens on the Wire
+What should stay true in raw mode:
 
-```
-Sensor                          Hub
-  │                              │
-  │  PingPacket (UDP :7150)      │
-  │  ┌─────────────────────┐    │
-  │  │ source: jis:sensor   │    │
-  │  │ target: jis:hub      │    │
-  │  │ intent: temp.report  │    │
-  │  │ nonce: a3f8c...      │────►  1. Decode packet
-  │  │ payload: {celsius:21}│    │   2. Check nonce (replay?)
-  │  └─────────────────────┘    │   3. Lookup trust score
-  │                              │   4. Airlock gate → GROEN
-  │  PingResponse (UDP)          │
-  │  ┌─────────────────────┐    │
-  │  │ decision: ACCEPT     │◄───│   5. Send response
-  │  │ zone: GROEN          │    │
-  │  │ trust: 0.9           │    │
-  │  └─────────────────────┘    │
-  │                              │
-```
+- fast operator feel
+- minimal syntax
+- immediate reachability instinct
+- Lionel-vibe warnings still welcome
 
-Wire format: 8-byte header (`TP` magic + version + flags + length) + JSON payload. With `[msgpack]` extra: binary msgpack for ~40% smaller frames.
+This is the right mode when you just want the gut check.
 
-## Airlock Zones
+### 2. Chosen `tping+`
 
-Three-zone trust model. No configuration needed — just set trust scores.
+Use this when the question gets more specific:
 
-| Zone | Trust | What happens |
-|------|-------|--------------|
-| **GROEN** | >= 0.7 | Accept — response sent back |
-| **GEEL** | 0.3 – 0.7 | Pending — rules or HITL decides |
-| **ROOD** | < 0.3 | Silent drop — no response, no signal |
+> Which layer is there, and what exactly is alive?
 
-ROOD doesn't reject — it stays silent. Unknown devices get nothing. No error, no hint they were heard. This is by design.
-
-## LAN Discovery
-
-Find devices on the local network without knowing IPs:
-
-```python
-from tibet_ping.transport import IoTNode
-
-async def main():
-    node = IoTNode("jis:office:hub")
-
-    async def on_found(did, addr, response):
-        print(f"Found {did} at {addr[0]}:{addr[1]}")
-
-    node.discovery.on_discovered(on_found)
-    await node.start()
-
-    # Broadcast discovery beacon
-    await node.discovery.broadcast_discover()
-
-    await asyncio.sleep(5)  # Listen for responses
-    await node.stop()
-```
-
-Discovery uses multicast group `224.0.71.50:7151`. Devices respond with their DID and capabilities.
+Examples:
 
 ```bash
-# CLI
-tibet-ping discover --timeout 10
+tping jasper.aint
+tping dl360.jasper.aint
+tping --probe aint jasper.aint
+tping --probe did jis:humotica:continuityd@192.168.4.76
+tping --probe ains root_idd
+tping --probe continuityd http://192.168.4.76:8443
+tping --probe listener http://192.168.4.76:8443
+tping --probe handoff http://192.168.4.76:8443 --active
+tping --probe handoff http://192.168.4.76:8443 --active --reply-to jasper.aint
+tping --probe roundtrip http://192.168.4.76:8443 --active --reply-to jasper.aint
+tping --probe inbox http://192.168.4.76:8443
+tping --probe mux 10.0.100.1:4432
+tping --probe sendpath jasper.aint
 ```
 
-## Mesh Relay
+This is why the `tping+` framing is useful.
 
-Packets with `routing_mode=MESH` are automatically forwarded through intermediate nodes:
+It is not a different binary.
 
-```python
-from tibet_ping import PingNode, RoutingMode
+It is the moment where the operator deliberately asks for a deeper,
+stack-aware answer.
 
-node = PingNode("jis:sensor")
-packet = node.ping(
-    target="jis:gateway",
-    intent="data.forward",
-    purpose="Multi-hop delivery",
-    routing_mode=RoutingMode.MESH,
-)
-```
+## Why this fits the real package
 
-Relay features:
-- **Hop counting** — `max_hops` prevents infinite forwarding (default: 10)
-- **Loop detection** — seen-packet cache drops duplicates
-- **Cache eviction** — oldest half evicted when cache is full
+The package is already richer than the casual CLI suggests. It already
+touches themes like:
 
-## Protocol Layer (without transport)
+- JIS-aware identity
+- intent and purpose
+- nonce/replay protection
+- UDP transport
+- LAN discovery
+- mesh relay
+- mux and stack diagnostics
 
-You can also use tibet-ping as a pure protocol library — create packets, check trust, process responses — without any network I/O:
+So the real opportunity is not to bolt on a random extra command.
 
-```python
-from tibet_ping import PingNode, PingDecision
+The opportunity is to make the existing family easier to use at
+different depths.
 
-hub = PingNode("jis:home:hub")
-sensor = PingNode("jis:home:sensor")
+## Probe family
 
-hub.set_trust("jis:home:sensor", 0.9)
+The sandbox probe family currently includes:
 
-# Create packet (no network)
-packet = sensor.ping(
-    target="jis:home:hub",
-    intent="temperature.report",
-    purpose="Reading",
-    payload={"celsius": 21.5},
-)
+- `aint`
+  - inspect and resolve an AInternet-style destination such as
+    `jasper.aint`
+- `did`
+  - parse and inspect a JIS-style target
+- `ains`
+  - ask whether a name resolves and whether metadata exists
+- `continuityd`
+  - check whether the daemon HTTP surface responds
+- `listener`
+  - quickly validate that a continuityd listener appears open and
+    plausible on a host, laptop, or Termux node
+- `handoff`
+  - actively push a tiny probe object through the HTTP inbox path when
+    you explicitly allow it with `--active`
+  - can already emit an ACK/receipt hint surface when you provide
+    `--reply-to`
+- `roundtrip`
+  - declare a manifest-style diagnostic ping with `require_ack` and
+    `reply_to`, then push it through the real ingress path
+- `inbox`
+  - check whether the inbox endpoint family looks real and reachable
+- `mux`
+  - check whether a mux TCP surface is reachable
+- `sendpath`
+  - validate an identity-routed path shape without writing a test object
 
-# Process locally (no network)
-response = hub.receive(packet)
-assert response.decision == PingDecision.ACCEPT
-assert response.airlock_zone == "GROEN"
-```
+This is intentionally modest.
 
-This is useful for testing, simulation, or embedding the trust protocol in your own transport.
+The first goal is coherence:
 
-## Vouching (Scale Trust)
+- one CLI family
+- one muscle-memory
+- several legitimate layers to inspect
 
-Trust 1 device manually, let it vouch for 50:
+## What this means operationally
 
-```python
-hub.vouch(
-    vouched_dids=["jis:home:s1", "jis:home:s2", ...],
-    my_trust=0.9,
-    vouch_factor=0.7,  # Vouched trust = 0.9 * 0.7 = 0.63 (GEEL)
-)
-```
+The TIBET stack already has many ping-shaped questions:
 
-## Beacon Bootstrap
+- is the host reachable?
+- is the DID target sensible?
+- does AINS know this name?
+- is continuityd alive?
+- is the inbox surface there?
+- is mux listening?
 
-New device joins network without pre-shared secrets:
+To an operator these are different layers of the same moment:
 
-```python
-# New device broadcasts beacon
-beacon = new_device.broadcast_beacon(
-    capabilities=["temperature", "humidity"],
-    device_type="sensor",
-)
+> Before I continue, is this thing really there in the way I think it is?
 
-# Hub handles with auto-vouch rules or HITL escalation
-response = hub.handle_beacon(beacon)
-```
+That is why it makes sense to keep them in one command family instead of
+spreading them across unrelated tools.
 
-## TIBET Provenance Mapping
+## Current sandbox behavior
 
-Every packet field maps to a TIBET dimension:
-
-| Packet field | TIBET dimension | Meaning |
-|-------------|----------------|---------|
-| `intent`, `purpose`, `payload` | **ERIN** | What's in the action |
-| `source_did`, `target_did` | **ERAAN** | Who's involved |
-| `routing_mode`, `hop_count`, `pod_id` | **EROMHEEN** | Context around it |
-| `purpose` | **ERACHTER** | Why this action |
-
-Record provenance with tibet-core's NetworkBridge:
-
-```python
-from tibet_core import Provider, NetworkBridge
-
-bridge = NetworkBridge(Provider(actor="jis:home:hub"))
-token = bridge.record_ping(packet, response)  # Immutable audit token
-```
-
-## Topology
-
-Network modeling with roles:
-
-| Role | Description |
-|------|-------------|
-| **Hub** | Central node, high trust |
-| **Hubby** | Backup hub, failover |
-| **Pod** | Logical group of devices |
-| **Station** | Edge device, leaf node |
-
-## CLI Reference
+This sketch already supports the following probe forms:
 
 ```bash
-# Protocol (no network)
-tibet-ping jis:home:hub              # Create packet (proto only)
-tibet-ping demo                       # Run trust demo
-tibet-ping 88.33.294.66              # Easter egg
-
-# Transport (real network)
-tibet-ping listen [--port 7150] [--did jis:iot:node]
-tibet-ping send <did> <host:port> <intent> [--purpose "..."]
-tibet-ping discover [--port 7150] [--timeout 5]
-tibet-ping net-demo                   # Two-node localhost demo
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli jasper.aint
 ```
 
-## Architecture
-
-```
-tibet-ping v0.2.0
-├── Protocol layer (sync)
-│   ├── PingNode          — create packets, process responses
-│   ├── PingPacket        — identity, intent, nonce, payload
-│   ├── Airlock           — three-zone trust gate
-│   ├── NonceTracker      — replay protection
-│   ├── VouchRegistry     — delegated trust
-│   ├── BeaconHandler     — new device onboarding
-│   └── Topology          — pod/hub/station modeling
-│
-└── Transport layer (async)
-    ├── IoTNode           — main entry point (composes all below)
-    ├── UDPTransport      — async UDP via DatagramProtocol
-    ├── PacketCodec       — wire format (8-byte header + JSON/msgpack)
-    ├── PeerTracker       — connection tracking, liveness
-    ├── MeshRelay         — multi-hop forwarding, loop detection
-    └── NetworkDiscovery  — multicast LAN discovery (224.0.71.50)
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe aint jasper.aint
 ```
 
-## How It Fits in the Ecosystem
-
-```
-tibet-core             tibet-ping              tibet-cortex
-(provenance)           (protocol + transport)  (vector search)
- Token, Chain    ───►   PingPacket, Airlock     Airlock chunks
- Store, HMAC            IoTNode, UDP            JIS-gated search
- NetworkBridge          Discovery, Relay        Encrypted memory
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe aint jasper.aint --json
 ```
 
-- **[tibet-core](https://pypi.org/project/tibet-core/)** — Immutable provenance tokens
-- **[tibet-ping](https://pypi.org/project/tibet-ping/)** — Protocol + transport (this package)
-- **[tibet-cortex](https://pypi.org/project/tibet-cortex/)** — Vector search with Airlock
-- **[tibet-overlay](https://pypi.org/project/tibet-overlay/)** — Encrypted mesh networking
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe did jis:humotica:continuityd@192.168.4.76
+```
 
-## License
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe ains root_idd
+```
 
-MIT — [Humotica](https://humotica.com)
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe continuityd http://192.168.4.76:8443
+```
 
-## Links
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe listener http://192.168.4.76:8443
+```
 
-- [PyPI](https://pypi.org/project/tibet-ping/)
-- [GitHub](https://github.com/Humotica/tibet-ping)
-- [IETF TIBET Draft](https://datatracker.ietf.org/doc/draft-vandemeent-tibet-provenance/)
-- [IETF JIS Draft](https://datatracker.ietf.org/doc/draft-vandemeent-jis-identity/)
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe handoff http://192.168.4.76:8443 --active
+```
+
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe handoff \
+  http://192.168.4.76:8443 \
+  --active \
+  --reply-to jasper.aint \
+  --json
+```
+
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe roundtrip \
+  http://192.168.4.76:8443 \
+  --active \
+  --reply-to jasper.aint \
+  --ack-window-ms 5000 \
+  --json
+```
+
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe inbox http://192.168.4.76:8443
+```
+
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe mux 10.0.100.1:4432
+```
+
+```bash
+PYTHONPATH=/srv/jtel-stack/sandbox/ai/codex/tibet-ping-plus-sketch/src \
+python3 -m tibet_ping.cli --probe sendpath jasper.aint
+```
+
+The probe output currently tries to stay uniform:
+
+- `probe`
+- `target`
+- `reachable`
+- `latency`
+- `identity` where relevant
+- `verdict`
+- `notes`
+
+That matters because the semantics differ, but the operator should not
+need a new reading habit for every layer.
+
+For scripting, probe mode can also emit JSON:
+
+```bash
+tping --probe aint jasper.aint --json
+tping --probe continuityd http://192.168.4.76:8443 --json
+tping --probe listener http://192.168.4.76:8443 --json
+tping --probe handoff http://192.168.4.76:8443 --active --json
+tping --probe handoff http://192.168.4.76:8443 --active --reply-to jasper.aint --json
+tping --probe roundtrip http://192.168.4.76:8443 --active --reply-to jasper.aint --json
+```
+
+## Listener philosophy
+
+For `continuityd`, a quick listener check is useful.
+
+That is especially true on small edge hosts such as:
+
+- laptops
+- Termux / Android
+- lightweight MIPS or ARM boxes
+
+But the default probe should stay conservative.
+
+So the current `listener` direction is:
+
+- passive
+- non-mutating
+- useful for "is my listener there and plausibly configured?"
+
+Later, a separate explicit write-path probe can exist for cases where you
+really want to push a tiny signed object through the path.
+
+That next step is now modeled as `handoff`:
+
+- passive by default only in the sense that it refuses to write unless
+  you add `--active`
+- explicit when you want a tiny object to cross the real ingress path
+- useful for proving that a phone, laptop, or small edge host is not
+  merely listening, but actually admitting arrival
+
+It still does not measure full causal completion.
+
+For that, the natural next layer is:
+
+- tiny handoff
+- then receipt or ACK back
+- then causal timing over the roundtrip
+
+`handoff` now already leaves space for that next step by exposing:
+
+- a probe reference
+- an `ack-of-<shortid>` surface hint
+- an optional `--reply-to` target
+
+So the later receipt loop can align with `tcd ack` instead of inventing
+an unrelated shape.
+
+`roundtrip` is the next layer above that:
+
+- it writes a tiny diagnostic object
+- it declares `require_ack=true`
+- it includes `reply_to`
+- it carries an expected ACK window
+
+Today it stops at:
+
+- ingress acceptance
+- correlation reference
+- ACK expectation declaration
+
+Later it can grow into:
+
+- actual receipt observation
+- separate ingress and receipt latency
+- a real causal roundtrip measurement
+
+## Design principle
+
+The best version of this tool probably does not replace the raw mode.
+
+It should let someone move naturally between:
+
+- `just ping it`
+- and:
+- `probe the layer I actually care about`
+
+That preserves the friendly operator surface while allowing the tool to
+grow with the continuity-native stack.
+
+## Short framing
+
+Raw `tping` asks:
+
+> Is anything there?
+
+Chosen `tping+` asks:
+
+> Which layer is there, and in what state?
+
+That is the right evolution.

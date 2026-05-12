@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tibet-ping"
-version = "0.2.1"
-description = "Intent-based discovery and communication protocol with TIBET provenance and built-in transport layer (UDP, LAN discovery, mesh relay)."
+version = "0.3.0"
+description = "Intent-based ping with TIBET provenance — protocol, UDP transport, LAN discovery, ClusterMux diagnostics, and full stack health checks."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -16,7 +16,7 @@ authors = [
 keywords = [
     "tibet", "jis", "ping", "discovery", "intent", "iot",
     "mesh", "provenance", "trust", "airlock", "vouching",
-    "beacon", "bootstrap", "hub", "pod", "station"
+    "beacon", "mux", "diagnostics", "health-check", "cluster"
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
