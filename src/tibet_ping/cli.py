@@ -1477,6 +1477,14 @@ def main() -> None:
         _usage()
         return
 
+    # v0.3.1 fix: --version / -V should be action='version' style, not
+    # treated as a positional probe target. (= bug reported by Jasper
+    # in cross-host vloedtest 12 mei 2026: 'tibet-ping --version'
+    # output was 'TIBET-PING --version / Packet: ping_...')
+    if args[0] in ("--version", "-V"):
+        print(f"tibet-ping {__version__}")
+        return
+
     # Probe mode shortcut: `tibet-ping --probe continuityd http://...`
     if args[0] == "--probe":
         import argparse
