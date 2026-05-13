@@ -46,7 +46,7 @@ from .beacon import Beacon, BeaconHandler, BeaconResponse
 from .handler import PingHandler
 from .node import PingNode
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 # Transport layer (merged from tibet-iot in v0.2.0)
 from .transport import (

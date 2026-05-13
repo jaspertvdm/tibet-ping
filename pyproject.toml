@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tibet-ping"
-version = "0.3.1"
+version = "0.3.2"
 description = "Intent-based ping with TIBET provenance — protocol, UDP transport, LAN discovery, ClusterMux diagnostics, and full stack health checks."
 readme = "README.md"
 license = {text = "MIT"}
